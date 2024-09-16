@@ -1,0 +1,56 @@
+[package]
+name = "band-integration-package"
+version = "1.0.0"
+edition = "2021"
+authors = ["Gaurav Agarwal <gaurav@routerprotocol.com>"]
+description = "The Band Integration package"
+repository = "https://github.com/router-protocol/band-integration.git"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+exclude = [
+  # Those files are rust-optimizer artifacts. You might want to commit them for convenience but they should not be part of the source code publication.
+  "contract.wasm",
+  "hash.txt",
+]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+opt-level = 3
+debug = false
+rpath = false
+lto = true
+debug-assertions = false
+codegen-units = 1
+panic = 'abort'
+incremental = false
+overflow-checks = true
+
+[features]
+backtraces = ["cosmwasm-std/backtraces"]
+# use library feature to disable all instanti`ate/execute/query exports
+library = []
+
+[dependencies]
+cosmwasm-std = "1.5.5"
+cw-storage-plus = "1.2.0"
+schemars = "0.8.19"
+serde = { version = "1.0.201", default-features = false, features = ["derive"] }
+thiserror = "1.0.60"
+cw20 = { version = "1.1.2" }
+cw20-base = { version = "1.1.2", features = ["library"] }
+cw0 = { version = "0.10.3" }
+cw2 = { version = "1.1.2" }
+cosmwasm-crypto = "1.5.5"
+hex = "0.4.3"
+arrayref = "0.3.7"
+codec = { package = "parity-scale-codec", version = "2.0.0", features = ["derive"] }
+getrandom = { version = "0.2.15", features = ["js"] }
+router-wasm-bindings = { version = "1.0.3", default-features = false }
+ibc-tracking = { path = "../ibc-tracking" }
+base64 = "0.13.0"
+
+[dev-dependencies]
+cosmwasm-schema = "1.5.5"

@@ -7,10 +7,11 @@ use cosmwasm_std::{
 };
 use router_wasm_bindings::types::{AckType, RequestMetaData, NATIVE_DENOM};
 use router_wasm_bindings::{RouterMsg, RouterQuery};
+use solabi::encode;
 
 use crate::modifers::is_admin_modifier;
 use crate::state::{
-    ADMIN, EXECUTORS, IN_TRANSIT_IBC_CALLS, TEMP_INCOMING_IBC_CALL, TEMP_OUTGOING_IBC_CALL,
+    ADMIN, IN_TRANSIT_IBC_CALLS, TEMP_INCOMING_IBC_CALL, TEMP_OUTGOING_IBC_CALL,
     WHITELISTED_IBC_CHANNELS,
 };
 
@@ -99,10 +100,11 @@ pub fn withdraw_funds(
 }
 
 pub fn receive_band_data(
-    deps: DepsMut<RouterQuery>,
+    _deps: DepsMut<RouterQuery>,
     _env: &Env,
     info: &MessageInfo,
     dest_chain_id: String,
+    dest_contract_address: String,
     gas_limit: u64,
     gas_price: u64,
     payload: Binary,
@@ -110,7 +112,18 @@ pub fn receive_band_data(
     _signature: String,
 ) -> StdResult<Response<RouterMsg>> {
     let caller: String = info.sender.to_string();
-    assert_eq!(EXECUTORS.load(deps.storage, &caller).unwrap_or(false), true);
+
+    // add a sender to the payload and encode it
+    let payload_with_caller_on_router = encode(&(
+        caller,
+        solabi::Bytes(payload.0),
+    ));
+
+    // add a destination contract address
+    let request_packet = encode(&(
+        dest_contract_address,
+        solabi::Bytes(payload_with_caller_on_router),
+    ));
 
     let request_metadata: RequestMetaData = RequestMetaData {
         dest_gas_limit: gas_limit,
@@ -129,7 +142,7 @@ pub fn receive_band_data(
         route_recipient: String::new(),
         dest_chain_id: dest_chain_id.clone(),
         request_metadata: request_metadata.get_abi_encoded_bytes(),
-        request_packet: payload.0,
+        request_packet,
     };
 
     let cross_chain_msg: CosmosMsg<RouterMsg> = i_send_request.into();
@@ -170,32 +183,6 @@ pub fn whitelist_chains(
 
     let res = Response::new()
         .add_attribute("action", "WhitelistCosmosChains")
-        .add_event(white_list_event);
-    Ok(res)
-}
-
-pub fn white_list_executors(
-    deps: DepsMut<RouterQuery>,
-    _env: &Env,
-    info: &MessageInfo,
-    executors: Vec<(String, bool)>,
-) -> StdResult<Response<RouterMsg>> {
-    is_admin_modifier(deps.as_ref(), &info.sender.to_string())?;
-
-    for i in 0..executors.len() {
-        if executors[i].1 {
-            EXECUTORS.remove(deps.storage, &executors[i].0);
-            continue;
-        }
-        EXECUTORS.save(deps.storage, &executors[i].0, &true)?;
-    }
-    let event_name: String = String::from("WhiteListExecutors");
-    let format_str: String = format!("executors {:?}", executors);
-    deps.api.debug(&format_str);
-    let white_list_event: Event = Event::new(event_name).add_attribute("call_data", format_str);
-
-    let res = Response::new()
-        .add_attribute("action", "WhiteListExecutors")
         .add_event(white_list_event);
     Ok(res)
 }

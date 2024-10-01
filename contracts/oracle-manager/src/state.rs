@@ -9,8 +9,6 @@ pub const HANDLE_INBOUND_IBC_TOKENS: u64 = 2;
 
 pub const ADMIN: Item<String> = Item::new("admin");
 
-pub const EXECUTORS: Map<&str, bool> = Map::new("executors");
-
 // whitelisted Addresses mapping ChainId => Address
 pub const WHITELISTED_IBC_CHANNELS: Map<&str, IbcChannelInfo> =
     Map::new("white_listed_ibc_channels");

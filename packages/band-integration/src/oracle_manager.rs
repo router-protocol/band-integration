@@ -83,11 +83,9 @@ pub enum SudoMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    WhiteListExecutors {
-        executors: Vec<(String, bool)>,
-    },
     ReceiveBandData {
         dest_chain_id: String,
+        dest_contract_address: String,
         gas_limit: u64,
         gas_price: u64,
         payload: Binary,

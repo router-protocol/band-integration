@@ -11,7 +11,7 @@ use cw2::{get_contract_version, set_contract_version};
 
 use crate::{
     execution::{
-        clear_temp_states, receive_band_data, update_admin, white_list_executors, whitelist_chains,
+        clear_temp_states, receive_band_data, update_admin, whitelist_chains,
         withdraw_funds,
     },
     handle_reply::handle_reply,
@@ -71,11 +71,9 @@ pub fn execute(
     // Clear Temp State
     clear_temp_states(deps.storage);
     match msg {
-        ExecuteMsg::WhiteListExecutors { executors } => {
-            white_list_executors(deps, &env, &info, executors)
-        }
         ExecuteMsg::ReceiveBandData {
             dest_chain_id,
+            dest_contract_address,
             gas_limit,
             gas_price,
             payload,
@@ -86,6 +84,7 @@ pub fn execute(
             &env,
             &info,
             dest_chain_id,
+            dest_contract_address,
             gas_limit,
             gas_price,
             payload,

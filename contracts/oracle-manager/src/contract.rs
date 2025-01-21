@@ -12,15 +12,16 @@ use cw2::{get_contract_version, set_contract_version};
 use crate::{
     execution::{
         clear_temp_states, receive_band_data, update_admin, whitelist_chains,
-        withdraw_funds,
+        withdraw_funds, register_fee_payer_or_fund,
     },
     handle_reply::handle_reply,
     ibc::{receive_ack, receive_timeout},
     queries::{
-        fetch_admin, fetch_balance, fetch_incoming_ibc_state, fetch_intransit_calls,
-        fetch_white_listed, fetch_white_listed_cosmos_chains_info,
+        fetch_admin, fetch_balance, fetch_incoming_ibc_state, fetch_intransit_calls, fetch_fee_payer_for_tunnel_id,
+        fetch_white_listed, fetch_white_listed_cosmos_chains_info, fetch_available_funds,
     },
     state::ADMIN,
+    sudo::handle_sudo_ack,
 };
 
 // version info for migration info
@@ -57,7 +58,13 @@ pub fn sudo(deps: DepsMut<RouterQuery>, env: Env, msg: SudoMsg) -> StdResult<Res
         }) => receive_ack(deps, env, channel, sequence, success).map_err(|e| e.into()),
         SudoMsg::IBCLifecycleComplete(IBCLifecycleComplete::IBCTimeout { channel, sequence }) => {
             receive_timeout(deps, env, channel, sequence).map_err(|e| e.into())
-        }
+        },
+        SudoMsg::HandleIAck {
+            request_identifier,
+            exec_flag,
+            exec_data,
+            refund_amount,
+        } => handle_sudo_ack(deps, env, request_identifier, exec_flag, exec_data, refund_amount),
     }
 }
 
@@ -77,8 +84,6 @@ pub fn execute(
             gas_limit,
             gas_price,
             payload,
-            nonce,
-            signature,
         } => receive_band_data(
             deps,
             &env,
@@ -88,8 +93,6 @@ pub fn execute(
             gas_limit,
             gas_price,
             payload,
-            nonce,
-            signature,
         ),
         ExecuteMsg::WhitelistCosmosChain { ibc_info } => {
             whitelist_chains(deps, &env, &info, ibc_info)
@@ -100,6 +103,7 @@ pub fn execute(
             amount,
         } => withdraw_funds(deps, &env, &info, denom, recipient, amount),
         ExecuteMsg::UpdateAdmin { new_admin } => update_admin(deps, &info, new_admin),
+        ExecuteMsg::RegisterFeePayerOrFund { tunnel_id } => register_fee_payer_or_fund(deps, &info, tunnel_id),
     }
 }
 
@@ -147,5 +151,7 @@ pub fn query(deps: Deps<RouterQuery>, _env: Env, msg: QueryMsg) -> StdResult<Bin
         }
         QueryMsg::FetchTempItem {} => to_json_binary(&fetch_incoming_ibc_state(deps)?),
         QueryMsg::FetchBalances { addr } => to_json_binary(&fetch_balance(deps, addr)?),
+        QueryMsg::FetchFeePayerForTunnel { tunnel_id } => to_json_binary(&fetch_fee_payer_for_tunnel_id(deps, tunnel_id)?),
+        QueryMsg::FetchAvailableFunds { fee_payer } => to_json_binary(&fetch_available_funds(deps, fee_payer)?),
     }
 }

@@ -3,13 +3,12 @@ use std::marker::PhantomData;
 use band_integration_package::oracle_manager::{
     IbcChannelInfo, InTransitToIbcCall, TempIncomingCalls, TempOutgoingCalls,
 };
-use cosmwasm_std::{AllBalanceResponse, BankQuery, Deps, Order, StdResult};
+use cosmwasm_std::{AllBalanceResponse, BankQuery, Deps, Order, StdResult, Uint128};
 use cw_storage_plus::Bound;
 use router_wasm_bindings::RouterQuery;
 
 use crate::state::{
-    ADMIN, IN_TRANSIT_IBC_CALLS, TEMP_INCOMING_IBC_CALL, TEMP_OUTGOING_IBC_CALL,
-    WHITELISTED_IBC_CHANNELS,
+    ADMIN, FEE_PAYER, FEE_TANK, IN_TRANSIT_IBC_CALLS, TEMP_INCOMING_IBC_CALL, TEMP_OUTGOING_IBC_CALL, WHITELISTED_IBC_CHANNELS
 };
 
 pub fn fetch_admin(deps: Deps<RouterQuery>) -> StdResult<String> {
@@ -94,4 +93,18 @@ pub fn fetch_white_listed_cosmos_chains_info(
         Ok(data) => return Ok(data),
         Err(err) => return Err(err),
     };
+}
+
+pub fn fetch_fee_payer_for_tunnel_id(
+    deps: Deps<RouterQuery>,
+    tunnel_id: u64,
+) -> StdResult<String> {
+    FEE_PAYER.load(deps.storage, tunnel_id)
+}
+
+pub fn fetch_available_funds(
+    deps: Deps<RouterQuery>,
+    fee_payer: String,
+) -> StdResult<Uint128> {
+    FEE_TANK.load(deps.storage, &fee_payer)
 }

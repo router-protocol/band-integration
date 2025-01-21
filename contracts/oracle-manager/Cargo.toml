@@ -50,7 +50,9 @@ serde-json-wasm = "0.5.0"
 serde-cw-value = "0.7.0"
 codec = { package = "parity-scale-codec", version = "2.0.0", features = ["derive"] }
 getrandom = { version = "0.2.15", features = ["js"] }
-router-wasm-bindings = { version = "1.0.3", default-features = false }
+router-wasm-bindings = { version = "0.4.0", default-features = false, features = [
+  "ethabi",
+]}
 solabi = "0.2.0"
 band-integration-package = { path = "../../packages/band-integration" }
 ibc-tracking = { path = "../../packages/ibc-tracking" }

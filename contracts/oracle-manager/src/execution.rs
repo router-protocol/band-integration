@@ -2,28 +2,25 @@ use band_integration_package::oracle_manager::{
     IbcChannelInfo, InTransitToIbcCall, WhitelistCosmosChain,
 };
 use cosmwasm_std::{
-    BankMsg, Binary, Coin, CosmosMsg, DepsMut, Env, Event, MessageInfo, Response, StdResult,
-    Storage, Uint128,
+    BankMsg, Binary, Coin, DepsMut, Env, Event, MessageInfo, Response, StdResult,
+    Storage, Uint128, SubMsg, ReplyOn,
 };
-use router_wasm_bindings::types::{AckType, RequestMetaData, NATIVE_DENOM};
-use router_wasm_bindings::{RouterMsg, RouterQuery};
+use router_wasm_bindings::{
+    RouterMsg, RouterQuery,
+    types::{AckType, RequestMetaData, NATIVE_DENOM},
+    ethabi::{decode, Token, ParamType}
+};
 use solabi::encode;
 
-use crate::modifers::is_admin_modifier;
-use crate::state::{
-    ADMIN, IN_TRANSIT_IBC_CALLS, TEMP_INCOMING_IBC_CALL, TEMP_OUTGOING_IBC_CALL,
-    WHITELISTED_IBC_CHANNELS,
+use crate::{
+    modifers::{is_admin_modifier, is_valid_route_fund_modifier},
+    state::{
+        ADMIN, CREATE_OUTBOUND_REQUEST, IN_TRANSIT_IBC_CALLS, TEMP_INCOMING_IBC_CALL, TEMP_OUTGOING_IBC_CALL, WHITELISTED_IBC_CHANNELS,
+        FEE_PAYER, CURRENT_FEE_PAYER, EVENT, FEE_TANK,
+    }
 };
 
-pub fn is_native(token: &String) -> bool {
-    let native_denom: &str = NATIVE_DENOM;
-    if token.as_str() == native_denom {
-        return true;
-    }
-
-    false
-}
-
+pub const MINIMUM_FEE: u128 = 10000000000;
 pub fn is_ibc(token: &String) -> bool {
     if token.starts_with("ibc/") {
         return true;
@@ -100,7 +97,7 @@ pub fn withdraw_funds(
 }
 
 pub fn receive_band_data(
-    _deps: DepsMut<RouterQuery>,
+    deps: DepsMut<RouterQuery>,
     _env: &Env,
     info: &MessageInfo,
     dest_chain_id: String,
@@ -108,10 +105,16 @@ pub fn receive_band_data(
     gas_limit: u64,
     gas_price: u64,
     payload: Binary,
-    _nonce: u64,
-    _signature: String,
 ) -> StdResult<Response<RouterMsg>> {
     let caller: String = info.sender.to_string();
+
+    let token_vec = decode(&[ParamType::Uint(256)], payload.as_slice()).unwrap();
+
+    let mut fee_payer = String::default();
+    if let Token::Uint(tunnel_id) = token_vec[0] {
+        fee_payer = FEE_PAYER.load(deps.storage, tunnel_id.as_u64())?;
+        CURRENT_FEE_PAYER.save(deps.storage, &fee_payer)?;
+    }
 
     // add a sender to the payload and encode it
     let payload_with_caller_on_router = encode(&(
@@ -145,11 +148,21 @@ pub fn receive_band_data(
         request_packet,
     };
 
-    let cross_chain_msg: CosmosMsg<RouterMsg> = i_send_request.into();
+    let cross_chain_msg = SubMsg {
+        id: CREATE_OUTBOUND_REQUEST,
+        msg: i_send_request.into(),
+        gas_limit: None,
+        reply_on: ReplyOn::Success,
+    };
+
+    let event: Event = Event::new("ReceiveBandDataEvent")
+        .add_attribute("action", "ReceiveBandData")
+        .add_attribute("fee_payer", &fee_payer);
+    EVENT.save(deps.storage, &event)?;
 
     let res: Response<RouterMsg> = Response::new()
         .add_attribute("action", "ReceiveIbcTokens")
-        .add_message(cross_chain_msg);
+        .add_submessage(cross_chain_msg);
     Ok(res)
 }
 
@@ -198,4 +211,26 @@ pub fn store_awaiting_ibc_transfer(
 pub fn clear_temp_states(storage: &mut dyn Storage) {
     TEMP_INCOMING_IBC_CALL.remove(storage);
     TEMP_OUTGOING_IBC_CALL.remove(storage);
+}
+
+pub fn register_fee_payer_or_fund(
+    deps: DepsMut<RouterQuery>,
+    info: &MessageInfo,
+    tunnel_id: Option<u64>,
+) -> StdResult<Response<RouterMsg>> {
+    let sender: String = info.sender.to_string();
+
+    let mut fund = Uint128::default();
+    if is_valid_route_fund_modifier(info).is_ok() {
+        fund = info.funds.get(0).unwrap().amount;
+        let available_fee: Uint128 = FEE_TANK.load(deps.storage, &sender).unwrap_or_default();
+        FEE_TANK.save(deps.storage, &sender, &(available_fee + fund))?;
+    }
+
+    // The sender can specifies the tunnel for which he would pay
+    if tunnel_id.is_some() && fund.gt(&Uint128::new(MINIMUM_FEE))  {
+        FEE_PAYER.save(deps.storage, tunnel_id.unwrap(), &sender)?;
+    }
+
+    Ok(Response::new().add_attribute("action", "register_fee_payer"))
 }

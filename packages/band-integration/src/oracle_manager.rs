@@ -1,5 +1,5 @@
 use crate::{Deserialize, Serialize};
-use cosmwasm_std::{Binary, Uint128};
+use cosmwasm_std::{Binary, Uint128, Coin};
 use ibc_tracking::msg::IBCLifecycleComplete;
 use schemars::JsonSchema;
 
@@ -78,6 +78,12 @@ pub struct IbcChannelInfo {
 pub enum SudoMsg {
     #[serde(rename = "ibc_lifecycle_complete")]
     IBCLifecycleComplete(IBCLifecycleComplete),
+    HandleIAck {
+        request_identifier: u64,
+        exec_flag: bool,
+        exec_data: Binary,
+        refund_amount: Coin,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -89,8 +95,6 @@ pub enum ExecuteMsg {
         gas_limit: u64,
         gas_price: u64,
         payload: Binary,
-        nonce: u64,
-        signature: String,
     },
     WhitelistCosmosChain {
         ibc_info: Vec<WhitelistCosmosChain>,
@@ -102,6 +106,9 @@ pub enum ExecuteMsg {
         denom: String,
         recipient: String,
         amount: Uint128,
+    },
+    RegisterFeePayerOrFund {
+        tunnel_id: Option<u64>,
     },
 }
 
@@ -128,5 +135,11 @@ pub enum QueryMsg {
     FetchTempItem {},
     FetchBalances {
         addr: String,
+    },
+    FetchFeePayerForTunnel {
+        tunnel_id: u64,
+    },
+    FetchAvailableFunds {
+        fee_payer: String,
     },
 }

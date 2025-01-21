@@ -1,5 +1,5 @@
-use cosmwasm_std::{Deps, StdError, StdResult};
-use router_wasm_bindings::RouterQuery;
+use cosmwasm_std::{Deps, StdError, StdResult, MessageInfo};
+use router_wasm_bindings::{RouterQuery, types::NATIVE_DENOM};
 
 use crate::{
     queries::fetch_admin,
@@ -7,7 +7,7 @@ use crate::{
 };
 
 pub fn is_admin_modifier(deps: Deps<RouterQuery>, sender: &str) -> StdResult<()> {
-    let admin: String = fetch_admin(deps)?;
+    let admin: String = fetch_admin(deps)?; 
     if sender == &admin {
         return Ok(());
     }
@@ -31,6 +31,20 @@ pub fn is_white_listed_modifier(
         );
         deps.api.debug(&info_str);
         return StdResult::Err(StdError::GenericErr { msg: info_str });
+    }
+    Ok(())
+}
+
+pub fn is_valid_route_fund_modifier(info: &MessageInfo) -> StdResult<()> {
+    if info.funds.len() != 1 {
+        return Err(StdError::GenericErr {
+            msg: "funds length should be one".into(),
+        });
+    }
+    if info.funds[0].denom != NATIVE_DENOM {
+        return Err(StdError::GenericErr {
+            msg: "only Native Denom  accepted".into(),
+        });
     }
     Ok(())
 }

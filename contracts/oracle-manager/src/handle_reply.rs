@@ -1,15 +1,15 @@
 use band_integration_package::oracle_manager::{InTransitToIbcCall, TempOutgoingCalls};
 #[cfg(not(feature = "library"))]
-use cosmwasm_std::{DepsMut, Env, Response, StdResult};
-use cosmwasm_std::{Reply, StdError, SubMsgResult};
+use cosmwasm_std::{Reply, StdError, SubMsgResult, DepsMut, Env, Response, StdResult, from_json, Uint128};
 use ibc_tracking::msg::MsgTransferResponse;
 use prost::Message;
-use router_wasm_bindings::{RouterMsg, RouterQuery};
+use router_wasm_bindings::{RouterMsg, RouterQuery, types::CrosschainRequestResponse};
 
 use crate::handle_revert::revert_funds_to_ibc_chain;
 use crate::queries::load_temp_outgoing_ibc_transfer;
 use crate::state::{
-    CREATE_IBC_TANSFER, HANDLE_INBOUND_IBC_TOKENS, IN_TRANSIT_IBC_CALLS, TEMP_INCOMING_IBC_CALL,
+    CREATE_IBC_TANSFER, CREATE_OUTBOUND_REQUEST, HANDLE_INBOUND_IBC_TOKENS, IN_TRANSIT_IBC_CALLS, TEMP_INCOMING_IBC_CALL,
+    CURRENT_FEE_PAYER, FEE_TANK, EVENT, REQUEST_ID_FEE_PAYER,
 };
 
 pub fn handle_reply(
@@ -22,7 +22,6 @@ pub fn handle_reply(
             let info_str: String = format!("msg_id {:?}, msg_result: {:?}", msg.id, msg.result);
             deps.api.debug(&info_str);
             // TODO: need to handle nonce data here, logic depends on the msg binary data structure.
-            let response: Response<RouterMsg> = Response::new();
             match msg.result {
                 SubMsgResult::Ok(msg_result) => match msg_result.data {
                     Some(binary_data) => {
@@ -58,13 +57,11 @@ pub fn handle_reply(
                 },
                 SubMsgResult::Err(err) => deps.api.debug(&err.to_string()),
             }
-            return Ok(response);
         }
         HANDLE_INBOUND_IBC_TOKENS => {
             let info_str: String = format!("msg_id {:?}, msg_result: {:?}", msg.id, msg.result);
             deps.api.debug(&info_str);
             // TODO: need to handle nonce data here, logic depends on the msg binary data structure.
-            let response: Response<RouterMsg> = Response::new();
             match msg.result {
                 SubMsgResult::Ok(_) => {
                     deps.api.debug("Removing TEMP_INCOMING_IBC_CALL state");
@@ -76,10 +73,53 @@ pub fn handle_reply(
                     return revert_funds_to_ibc_chain(deps, &env, &err.to_string());
                 }
             }
-            return Ok(response);
+        }
+        CREATE_OUTBOUND_REQUEST => {
+            deps.api.debug(&msg.id.to_string());
+            let response: Response<RouterMsg> = Response::new();
+            match msg.result {
+                SubMsgResult::Ok(msg_result) => match msg_result.data {
+                    Some(binary_data) => {
+                        deps.api.debug("Binary Data Found");
+                        let cross_chain_req_res: CrosschainRequestResponse =
+                            from_json(&binary_data).unwrap();
+
+                        let info_str: String = format!(
+                            "Binary data {:?}, response {:?}",
+                            &binary_data.to_string(),
+                            cross_chain_req_res
+                        );
+                        deps.api.debug(&info_str);
+
+                        let fee_payer: String = CURRENT_FEE_PAYER.load(deps.storage)?;
+                        let available_fee: Uint128 =
+                            FEE_TANK.load(deps.storage, &fee_payer).unwrap_or_default();
+                        let required_fee: Uint128 = cross_chain_req_res.fee_deducted.amount;
+                        if required_fee > available_fee {
+                            let error: String = format!("Please provide sufficient fee, AvailableFee {:?}, RequiredFee {:?}", available_fee, required_fee);
+                            return StdResult::Err(StdError::GenericErr { msg: error });
+                        }
+                        FEE_TANK.save(deps.storage, &fee_payer, &(available_fee - required_fee))?;
+                        CURRENT_FEE_PAYER.remove(deps.storage);
+
+                        REQUEST_ID_FEE_PAYER.save(
+                            deps.storage,
+                            cross_chain_req_res.request_identifier,
+                            &fee_payer,
+                        )?;
+                        let event = EVENT.load(deps.storage)?;
+                        EVENT.remove(deps.storage);
+
+                        return Ok(response.add_event(event));
+                    }
+                    None => deps.api.debug("No Binary Data Found"),
+                },
+                SubMsgResult::Err(err) => deps.api.debug(&err.to_string()),
+            }
         }
         id => return Err(StdError::generic_err(format!("Unknown reply id: {}", id))),
     }
+    Ok(Response::new())
 }
 
 // pub fn handle_ibc_transfer_reply(deps: DepsMut<RouterQuery>, reply: Reply) -> StdResult<Response> {

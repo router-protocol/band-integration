@@ -12,7 +12,7 @@ use cw2::{get_contract_version, set_contract_version};
 use crate::{
     execution::{
         clear_temp_states, receive_band_data, update_admin, whitelist_chains,
-        withdraw_funds, register_fee_payer_or_fund,
+        register_fee_payer_or_fund,
     },
     handle_reply::handle_reply,
     ibc::{receive_ack, receive_timeout},
@@ -97,11 +97,6 @@ pub fn execute(
         ExecuteMsg::WhitelistCosmosChain { ibc_info } => {
             whitelist_chains(deps, &env, &info, ibc_info)
         }
-        ExecuteMsg::WithdrawFunds {
-            denom,
-            recipient,
-            amount,
-        } => withdraw_funds(deps, &env, &info, denom, recipient, amount),
         ExecuteMsg::UpdateAdmin { new_admin } => update_admin(deps, &info, new_admin),
         ExecuteMsg::RegisterFeePayerOrFund { tunnel_id } => register_fee_payer_or_fund(deps, &info, tunnel_id),
     }

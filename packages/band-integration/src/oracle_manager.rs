@@ -102,11 +102,6 @@ pub enum ExecuteMsg {
     UpdateAdmin {
         new_admin: String,
     },
-    WithdrawFunds {
-        denom: String,
-        recipient: String,
-        amount: Uint128,
-    },
     RegisterFeePayerOrFund {
         tunnel_id: Option<u64>,
     },

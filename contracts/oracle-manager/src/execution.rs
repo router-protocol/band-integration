@@ -2,22 +2,19 @@ use band_integration_package::oracle_manager::{
     IbcChannelInfo, InTransitToIbcCall, WhitelistCosmosChain,
 };
 use cosmwasm_std::{
-    BankMsg, Binary, Coin, DepsMut, Env, Event, MessageInfo, Response, StdResult,
-    Storage, Uint128, SubMsg, ReplyOn,
+    Binary, DepsMut, Env, Event, MessageInfo, Response, StdResult,
+    Storage, Uint128, SubMsg, ReplyOn, StdError,
 };
 use router_wasm_bindings::{
-    RouterMsg, RouterQuery,
-    types::{AckType, RequestMetaData, NATIVE_DENOM},
-    ethabi::{decode, Token, ParamType}
+    ethabi::{decode, ParamType, Token}, types::{AckType, RequestMetaData, NATIVE_DENOM}, RouterMsg, RouterQuery
 };
 use solabi::encode;
 
 use crate::{
     modifers::{is_admin_modifier, is_valid_route_fund_modifier},
     state::{
-        ADMIN, CREATE_OUTBOUND_REQUEST, IN_TRANSIT_IBC_CALLS, TEMP_INCOMING_IBC_CALL, TEMP_OUTGOING_IBC_CALL, WHITELISTED_IBC_CHANNELS,
-        FEE_PAYER, CURRENT_FEE_PAYER, EVENT, FEE_TANK,
-    }
+        ADMIN, CREATE_OUTBOUND_REQUEST, CURRENT_FEE_PAYER, EVENT, FEE_PAYER, FEE_TANK, IN_TRANSIT_IBC_CALLS, TEMP_INCOMING_IBC_CALL, TEMP_OUTGOING_IBC_CALL, WHITELISTED_IBC_CHANNELS
+    },
 };
 
 pub const MINIMUM_FEE: u128 = 10000000000;
@@ -75,27 +72,6 @@ pub fn update_admin(
     Ok(Response::new())
 }
 
-pub fn withdraw_funds(
-    deps: DepsMut<RouterQuery>,
-    _env: &Env,
-    info: &MessageInfo,
-    denom: String,
-    recipient: String,
-    amount: Uint128,
-) -> StdResult<Response<RouterMsg>> {
-    is_admin_modifier(deps.as_ref(), &info.sender.to_string())?;
-
-    let bank_msg = BankMsg::Send {
-        to_address: recipient.into(),
-        amount: vec![Coin { amount, denom }],
-    };
-
-    let res = Response::new()
-        .add_message(bank_msg)
-        .add_attribute("action", "SetGasFactor");
-    Ok(res)
-}
-
 pub fn receive_band_data(
     deps: DepsMut<RouterQuery>,
     _env: &Env,
@@ -108,12 +84,31 @@ pub fn receive_band_data(
 ) -> StdResult<Response<RouterMsg>> {
     let caller: String = info.sender.to_string();
 
-    let token_vec = decode(&[ParamType::Uint(256)], payload.as_slice()).unwrap();
+    // Define the ABI structure for the tuple
+    let packet_type = ParamType::Tuple(vec![
+        ParamType::Uint(64), // TunnelID
+        ParamType::Uint(64), // Sequence
+        ParamType::Array(Box::new(ParamType::Tuple(vec![
+            // SignalPrices
+            ParamType::FixedBytes(32), // SignalID
+            ParamType::Uint(64),       // Price
+        ]))),
+        ParamType::Int(64), // CreatedAt
+    ]);
 
-    let mut fee_payer = String::default();
-    if let Token::Uint(tunnel_id) = token_vec[0] {
-        fee_payer = FEE_PAYER.load(deps.storage, tunnel_id.as_u64())?;
-        CURRENT_FEE_PAYER.save(deps.storage, &fee_payer)?;
+    let fee_payer: String;
+    let tokens = decode(&[packet_type], payload.as_slice()).unwrap();
+
+    if let Some(Token::Tuple(values)) = tokens.get(0) {
+        // Extract TunnelID
+        if let Some(Token::Uint(tunnel_id)) = values.get(0) {
+            fee_payer = FEE_PAYER.load(deps.storage, tunnel_id.as_u64())?;
+            CURRENT_FEE_PAYER.save(deps.storage, &fee_payer)?;
+        } else {
+            return Err(StdError::generic_err("Failed to extract TunnelID").into());
+        }
+    } else {
+        return Err(StdError::generic_err("Decoded token is not a tuple").into());
     }
 
     // add a sender to the payload and encode it
@@ -157,7 +152,7 @@ pub fn receive_band_data(
 
     let event: Event = Event::new("ReceiveBandDataEvent")
         .add_attribute("action", "ReceiveBandData")
-        .add_attribute("fee_payer", &fee_payer);
+        .add_attribute("fee_payer", fee_payer);
     EVENT.save(deps.storage, &event)?;
 
     let res: Response<RouterMsg> = Response::new()

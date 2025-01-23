@@ -17,6 +17,7 @@ use crate::{
 pub const MINIMUM_FEE: u128 = 10_000_000_000;
 pub const ACK_GAS_PRICE: u64 = 50_000_000;     // it should be the same value w/ the InboundGasPrice param of crosschain module
 pub const ACK_GAS_LIMIT: u64 = 300_000;
+pub const MINIMUM_RELAYER_FEES: u64 = 25_000_000_000_000_000;
 
 pub fn update_admin(
     deps: DepsMut<RouterQuery>,

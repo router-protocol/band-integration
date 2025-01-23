@@ -1,8 +1,11 @@
 use cosmwasm_std::{Reply, StdError, SubMsgResult, DepsMut, Env, Response, StdResult, from_json, Uint128};
 use router_wasm_bindings::{RouterMsg, RouterQuery, types::CrosschainRequestResponse};
 
-use crate::state::{
-    CREATE_OUTBOUND_REQUEST, CURRENT_FEE_PAYER, FEE_TANK, EVENT, REQUEST_ID_FEE_PAYER,
+use crate::{
+    execution::{ACK_GAS_LIMIT, ACK_GAS_PRICE, MINIMUM_RELAYER_FEES}, 
+    state::{
+        CREATE_OUTBOUND_REQUEST, CURRENT_FEE_PAYER, EVENT, FEE_TANK, REQUEST_ID_FEE_PAYER
+    }
 };
 
 pub fn handle_reply(
@@ -31,7 +34,11 @@ pub fn handle_reply(
                         let fee_payer: String = CURRENT_FEE_PAYER.load(deps.storage)?;
                         let available_fee: Uint128 =
                             FEE_TANK.load(deps.storage, &fee_payer).unwrap_or_default();
-                        let required_fee: Uint128 = cross_chain_req_res.fee_deducted.amount;
+                        let req_dedecuted_fee: Uint128 = cross_chain_req_res.fee_deducted.amount;
+                        let ack_deduct_fee = Uint128::new(ACK_GAS_PRICE as u128).checked_mul(Uint128::new(ACK_GAS_LIMIT as u128))?;
+                        let relayer_fee_for_ack = Uint128::new(MINIMUM_RELAYER_FEES as u128);
+                        let required_fee = req_dedecuted_fee.checked_add(ack_deduct_fee)?.checked_add(relayer_fee_for_ack)?;
+
                         if required_fee > available_fee {
                             let error: String = format!("Please provide sufficient fee, AvailableFee {:?}, RequiredFee {:?}", available_fee, required_fee);
                             return StdResult::Err(StdError::GenericErr { msg: error });

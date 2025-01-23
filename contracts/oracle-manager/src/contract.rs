@@ -1,7 +1,6 @@
 use band_integration_package::oracle_manager::{
     ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, SudoMsg,
 };
-use ibc_tracking::msg::IBCLifecycleComplete;
 use router_wasm_bindings::{RouterMsg, RouterQuery};
 
 #[cfg(not(feature = "library"))]
@@ -11,14 +10,11 @@ use cw2::{get_contract_version, set_contract_version};
 
 use crate::{
     execution::{
-        clear_temp_states, receive_band_data, update_admin, whitelist_chains,
-        register_fee_payer_or_fund,
+        receive_band_data, update_admin, register_fee_payer_or_fund, claim_admin,
     },
     handle_reply::handle_reply,
-    ibc::{receive_ack, receive_timeout},
     queries::{
-        fetch_admin, fetch_balance, fetch_incoming_ibc_state, fetch_intransit_calls, fetch_fee_payer_for_tunnel_id,
-        fetch_white_listed, fetch_white_listed_cosmos_chains_info, fetch_available_funds,
+        fetch_admin, fetch_fee_payer_for_tunnel_id, fetch_available_funds,
     },
     state::ADMIN,
     sudo::handle_sudo_ack,
@@ -48,17 +44,7 @@ pub fn instantiate(
 pub fn sudo(deps: DepsMut<RouterQuery>, env: Env, msg: SudoMsg) -> StdResult<Response<RouterMsg>> {
     let info_string: String = format!("Inside Sudo Invokation {:?}", msg);
     deps.api.debug(&info_string);
-    clear_temp_states(deps.storage);
     match msg {
-        SudoMsg::IBCLifecycleComplete(IBCLifecycleComplete::IBCAck {
-            channel,
-            sequence,
-            success,
-            ack: _,
-        }) => receive_ack(deps, env, channel, sequence, success).map_err(|e| e.into()),
-        SudoMsg::IBCLifecycleComplete(IBCLifecycleComplete::IBCTimeout { channel, sequence }) => {
-            receive_timeout(deps, env, channel, sequence).map_err(|e| e.into())
-        },
         SudoMsg::HandleIAck {
             request_identifier,
             exec_flag,
@@ -75,8 +61,6 @@ pub fn execute(
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> StdResult<Response<RouterMsg>> {
-    // Clear Temp State
-    clear_temp_states(deps.storage);
     match msg {
         ExecuteMsg::ReceiveBandData {
             dest_chain_id,
@@ -94,10 +78,8 @@ pub fn execute(
             gas_price,
             payload,
         ),
-        ExecuteMsg::WhitelistCosmosChain { ibc_info } => {
-            whitelist_chains(deps, &env, &info, ibc_info)
-        }
         ExecuteMsg::UpdateAdmin { new_admin } => update_admin(deps, &info, new_admin),
+        ExecuteMsg::ClaimAdmin{ } => claim_admin(deps, &env, &info),
         ExecuteMsg::RegisterFeePayerOrFund { tunnel_id } => register_fee_payer_or_fund(deps, &info, tunnel_id),
     }
 }
@@ -135,17 +117,6 @@ pub fn query(deps: Deps<RouterQuery>, _env: Env, msg: QueryMsg) -> StdResult<Bin
     match msg {
         QueryMsg::GetContractVersion {} => to_json_binary(&get_contract_version(deps.storage)?),
         QueryMsg::FetchAdmin {} => to_json_binary(&fetch_admin(deps)?),
-        QueryMsg::FetchWhitelisted { chain_id } => {
-            to_json_binary(&fetch_white_listed(deps, &chain_id)?)
-        }
-        QueryMsg::FetchAllWhiteListed { start_key, limit } => to_json_binary(
-            &fetch_white_listed_cosmos_chains_info(deps, start_key, limit)?,
-        ),
-        QueryMsg::FetchInTransitCalls { start_key, limit } => {
-            to_json_binary(&fetch_intransit_calls(deps, start_key, limit))
-        }
-        QueryMsg::FetchTempItem {} => to_json_binary(&fetch_incoming_ibc_state(deps)?),
-        QueryMsg::FetchBalances { addr } => to_json_binary(&fetch_balance(deps, addr)?),
         QueryMsg::FetchFeePayerForTunnel { tunnel_id } => to_json_binary(&fetch_fee_payer_for_tunnel_id(deps, tunnel_id)?),
         QueryMsg::FetchAvailableFunds { fee_payer } => to_json_binary(&fetch_available_funds(deps, fee_payer)?),
     }

@@ -1,10 +1,7 @@
-use cosmwasm_std::{Deps, StdError, StdResult, MessageInfo};
+use cosmwasm_std::{Deps, StdError, StdResult, MessageInfo, Uint128};
 use router_wasm_bindings::{RouterQuery, types::NATIVE_DENOM};
 
-use crate::{
-    queries::fetch_admin,
-    state::WHITELISTED_IBC_CHANNELS,
-};
+use crate::queries::fetch_admin;
 
 pub fn is_admin_modifier(deps: Deps<RouterQuery>, sender: &str) -> StdResult<()> {
     let admin: String = fetch_admin(deps)?; 
@@ -14,25 +11,6 @@ pub fn is_admin_modifier(deps: Deps<RouterQuery>, sender: &str) -> StdResult<()>
     return StdResult::Err(StdError::GenericErr {
         msg: String::from("Auth: The caller is not Admin"),
     });
-}
-
-pub fn is_white_listed_modifier(
-    deps: Deps<RouterQuery>,
-    chain_id: String,
-    contract: String,
-) -> StdResult<()> {
-    let is_white_listed_contract = WHITELISTED_IBC_CHANNELS.has(deps.storage, &chain_id);
-    let info_str: String = format!("--chain_id: {:?}, contract: {:?}", chain_id, contract);
-    deps.api.debug(&info_str);
-    if !is_white_listed_contract {
-        let info_str: String = format!(
-            "Auth: The Sender/Receiver contract is not whitelisted, chain_id: {:?}, contract: {:?}",
-            chain_id, contract
-        );
-        deps.api.debug(&info_str);
-        return StdResult::Err(StdError::GenericErr { msg: info_str });
-    }
-    Ok(())
 }
 
 pub fn is_valid_route_fund_modifier(info: &MessageInfo) -> StdResult<()> {
@@ -47,4 +25,43 @@ pub fn is_valid_route_fund_modifier(info: &MessageInfo) -> StdResult<()> {
         });
     }
     Ok(())
+}
+
+pub fn is_ibc(token: &String) -> bool {
+    if token.starts_with("ibc/") {
+        return true;
+    }
+
+    false
+}
+
+pub fn validate_funds(info: &MessageInfo) -> StdResult<(Uint128, String, Uint128)> {
+    assert_eq!(info.funds.len() < 3, true, "Funds length should be 1 or 2");
+    assert_eq!(info.funds.len() != 0, true, "Funds length should be 1 or 2");
+
+    let mut native_amount: Uint128 = Uint128::zero();
+    let mut ibc_amount: Uint128 = Uint128::zero();
+    let mut ibc_token_address: String = String::default();
+
+    if info.funds.len() == 1 {
+        let fund: &cosmwasm_std::Coin = &info.funds[0];
+        if fund.denom == NATIVE_DENOM {
+            native_amount = fund.amount;
+        } else {
+            ibc_token_address = fund.denom.clone();
+            ibc_amount = fund.amount.clone();
+        }
+    }
+    if info.funds.len() == 2 {
+        let fund0: &cosmwasm_std::Coin = &info.funds[0];
+        let fund1: &cosmwasm_std::Coin = &info.funds[1];
+
+        assert_eq!(fund0.denom, NATIVE_DENOM, "Native Coins are required");
+        assert_eq!(is_ibc(&fund1.denom), true, "IBC is required");
+        native_amount = fund0.amount;
+        ibc_token_address = fund1.denom.clone();
+        ibc_amount = fund1.amount.clone();
+    }
+
+    Ok((native_amount, ibc_token_address, ibc_amount))
 }

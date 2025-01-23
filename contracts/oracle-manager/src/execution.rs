@@ -1,64 +1,22 @@
-use band_integration_package::oracle_manager::{
-    IbcChannelInfo, InTransitToIbcCall, WhitelistCosmosChain,
-};
 use cosmwasm_std::{
     Binary, DepsMut, Env, Event, MessageInfo, Response, StdResult,
-    Storage, Uint128, SubMsg, ReplyOn, StdError,
+    Uint128, SubMsg, ReplyOn, StdError,
 };
 use router_wasm_bindings::{
-    ethabi::{decode, ParamType, Token}, types::{AckType, RequestMetaData, NATIVE_DENOM}, RouterMsg, RouterQuery
+    ethabi::{decode, ParamType, Token}, types::{AckType, RequestMetaData}, RouterMsg, RouterQuery
 };
 use solabi::encode;
 
 use crate::{
-    modifers::{is_admin_modifier, is_valid_route_fund_modifier},
+    modifers::is_valid_route_fund_modifier,
     state::{
-        ADMIN, CREATE_OUTBOUND_REQUEST, CURRENT_FEE_PAYER, EVENT, FEE_PAYER, FEE_TANK, IN_TRANSIT_IBC_CALLS, TEMP_INCOMING_IBC_CALL, TEMP_OUTGOING_IBC_CALL, WHITELISTED_IBC_CHANNELS
+        ADMIN, NEW_ADMIN, CREATE_OUTBOUND_REQUEST, CURRENT_FEE_PAYER, EVENT, FEE_PAYER, FEE_TANK,
     },
 };
 
 pub const MINIMUM_FEE: u128 = 10_000_000_000;
 pub const ACK_GAS_PRICE: u64 = 50_000_000;     // it should be the same value w/ the InboundGasPrice param of crosschain module
 pub const ACK_GAS_LIMIT: u64 = 300_000;
-
-pub fn is_ibc(token: &String) -> bool {
-    if token.starts_with("ibc/") {
-        return true;
-    }
-
-    false
-}
-
-pub fn validate_funds(info: &MessageInfo) -> StdResult<(Uint128, String, Uint128)> {
-    assert_eq!(info.funds.len() < 3, true, "Funds length should be 1 or 2");
-    assert_eq!(info.funds.len() != 0, true, "Funds length should be 1 or 2");
-
-    let mut native_amount: Uint128 = Uint128::zero();
-    let mut ibc_amount: Uint128 = Uint128::zero();
-    let mut ibc_token_address: String = String::default();
-
-    if info.funds.len() == 1 {
-        let fund: &cosmwasm_std::Coin = &info.funds[0];
-        if fund.denom == NATIVE_DENOM {
-            native_amount = fund.amount;
-        } else {
-            ibc_token_address = fund.denom.clone();
-            ibc_amount = fund.amount.clone();
-        }
-    }
-    if info.funds.len() == 2 {
-        let fund0: &cosmwasm_std::Coin = &info.funds[0];
-        let fund1: &cosmwasm_std::Coin = &info.funds[1];
-
-        assert_eq!(fund0.denom, NATIVE_DENOM, "Native Coins are required");
-        assert_eq!(is_ibc(&fund1.denom), true, "IBC is required");
-        native_amount = fund0.amount;
-        ibc_token_address = fund1.denom.clone();
-        ibc_amount = fund1.amount.clone();
-    }
-
-    Ok((native_amount, ibc_token_address, ibc_amount))
-}
 
 pub fn update_admin(
     deps: DepsMut<RouterQuery>,
@@ -70,9 +28,24 @@ pub fn update_admin(
     assert_eq!(current_admin, info.sender.to_string());
 
     deps.api.addr_validate(&new_admin)?;
-    ADMIN.save(deps.storage, &new_admin)?;
+    NEW_ADMIN.save(deps.storage, &new_admin)?;
 
     Ok(Response::new())
+}
+
+pub fn claim_admin(
+    deps: DepsMut<RouterQuery>,
+    _env: &Env,
+    info: &MessageInfo,
+) -> StdResult<Response<RouterMsg>> {
+    let new_admin = NEW_ADMIN.load(deps.storage)?;
+
+    assert_eq!(new_admin, info.sender.to_string());
+
+    deps.api.addr_validate(&new_admin)?;
+    ADMIN.save(deps.storage, &new_admin)?;
+
+    Ok(Response::default())
 }
 
 pub fn receive_band_data(
@@ -85,8 +58,6 @@ pub fn receive_band_data(
     gas_price: u64,
     payload: Binary,
 ) -> StdResult<Response<RouterMsg>> {
-    let caller: String = info.sender.to_string();
-
     // Define the ABI structure for the tuple
     let packet_type = ParamType::Tuple(vec![
         ParamType::Uint(64), // TunnelID
@@ -113,6 +84,8 @@ pub fn receive_band_data(
     } else {
         return Err(StdError::generic_err("Decoded token is not a tuple").into());
     }
+
+    let caller: String = info.sender.to_string();
 
     // add a sender to the payload and encode it
     let payload_with_caller_on_router = encode(&(
@@ -158,59 +131,10 @@ pub fn receive_band_data(
         .add_attribute("fee_payer", fee_payer);
     EVENT.save(deps.storage, &event)?;
 
-
-
     let res: Response<RouterMsg> = Response::new()
         .add_attribute("action", "ReceiveIbcTokens")
         .add_submessage(cross_chain_msg);
     Ok(res)
-}
-
-pub fn whitelist_chains(
-    deps: DepsMut<RouterQuery>,
-    _env: &Env,
-    info: &MessageInfo,
-    ibc_info: Vec<WhitelistCosmosChain>,
-) -> StdResult<Response<RouterMsg>> {
-    is_admin_modifier(deps.as_ref(), &info.sender.to_string())?;
-
-    for i in 0..ibc_info.len() {
-        if ibc_info[i].remove {
-            WHITELISTED_IBC_CHANNELS.remove(deps.storage, &ibc_info[i].chain_id);
-            continue;
-        }
-        let object: IbcChannelInfo = IbcChannelInfo {
-            incoming_port: ibc_info[i].incoming_port.clone(),
-            incoming_channel: ibc_info[i].incoming_channel.clone(),
-            outgoing_port: ibc_info[i].outgoing_port.clone(),
-            outgoing_channel: ibc_info[i].outgoing_channel.clone(),
-            timeout_height: ibc_info[i].timeout_height,
-            timeout_timestamp: ibc_info[i].timeout_timestamp,
-        };
-        WHITELISTED_IBC_CHANNELS.save(deps.storage, &ibc_info[i].chain_id, &object)?;
-    }
-    let event_name: String = String::from("WhitelistCosmosChains");
-    let format_str: String = format!("ibc_info {:?}", ibc_info);
-    deps.api.debug(&format_str);
-    let white_list_event: Event = Event::new(event_name).add_attribute("call_data", format_str);
-
-    let res = Response::new()
-        .add_attribute("action", "WhitelistCosmosChains")
-        .add_event(white_list_event);
-    Ok(res)
-}
-
-pub fn store_awaiting_ibc_transfer(
-    deps: DepsMut<RouterQuery>,
-    sequence: u64,
-    data: &InTransitToIbcCall,
-) -> StdResult<()> {
-    IN_TRANSIT_IBC_CALLS.save(deps.storage, (&data.source_channel.clone(), sequence), data)
-}
-
-pub fn clear_temp_states(storage: &mut dyn Storage) {
-    TEMP_INCOMING_IBC_CALL.remove(storage);
-    TEMP_OUTGOING_IBC_CALL.remove(storage);
 }
 
 pub fn register_fee_payer_or_fund(

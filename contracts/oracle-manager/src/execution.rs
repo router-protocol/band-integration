@@ -17,7 +17,10 @@ use crate::{
     },
 };
 
-pub const MINIMUM_FEE: u128 = 10000000000;
+pub const MINIMUM_FEE: u128 = 10_000_000_000;
+pub const ACK_GAS_PRICE: u64 = 50_000_000;     // it should be the same value w/ the InboundGasPrice param of crosschain module
+pub const ACK_GAS_LIMIT: u64 = 300_000;
+
 pub fn is_ibc(token: &String) -> bool {
     if token.starts_with("ibc/") {
         return true;
@@ -126,8 +129,8 @@ pub fn receive_band_data(
     let request_metadata: RequestMetaData = RequestMetaData {
         dest_gas_limit: gas_limit,
         dest_gas_price: gas_price,
-        ack_gas_limit: 300_000,
-        ack_gas_price: 10_000_000,
+        ack_gas_limit: ACK_GAS_LIMIT,
+        ack_gas_price: ACK_GAS_PRICE,
         relayer_fee: Uint128::zero(),
         ack_type: AckType::AckOnBoth,
         is_read_call: false,
@@ -154,6 +157,8 @@ pub fn receive_band_data(
         .add_attribute("action", "ReceiveBandData")
         .add_attribute("fee_payer", fee_payer);
     EVENT.save(deps.storage, &event)?;
+
+
 
     let res: Response<RouterMsg> = Response::new()
         .add_attribute("action", "ReceiveIbcTokens")

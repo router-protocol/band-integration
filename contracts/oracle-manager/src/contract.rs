@@ -22,7 +22,7 @@ use crate::{
 
 // version info for migration info
 const CONTRACT_NAME: &str = "BandProtocol::OracleManager";
-const CONTRACT_VERSION: &str = "0.1.01";
+const CONTRACT_VERSION: &str = "0.1.2";
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -65,8 +65,7 @@ pub fn execute(
         ExecuteMsg::ReceiveBandData {
             dest_chain_id,
             dest_contract_address,
-            gas_limit,
-            gas_price,
+            max_gas_limit,
             payload,
         } => receive_band_data(
             deps,
@@ -74,13 +73,12 @@ pub fn execute(
             &info,
             dest_chain_id,
             dest_contract_address,
-            gas_limit,
-            gas_price,
+            max_gas_limit,
             payload,
         ),
         ExecuteMsg::UpdateAdmin { new_admin } => update_admin(deps, &info, new_admin),
         ExecuteMsg::ClaimAdmin{ } => claim_admin(deps, &env, &info),
-        ExecuteMsg::RegisterFeePayerOrFund { tunnel_id } => register_fee_payer_or_fund(deps, &info, tunnel_id),
+        ExecuteMsg::RegisterFeePayerOrFund { band_fee_payer } => register_fee_payer_or_fund(deps, &info, band_fee_payer),
     }
 }
 
@@ -117,7 +115,7 @@ pub fn query(deps: Deps<RouterQuery>, _env: Env, msg: QueryMsg) -> StdResult<Bin
     match msg {
         QueryMsg::GetContractVersion {} => to_json_binary(&get_contract_version(deps.storage)?),
         QueryMsg::FetchAdmin {} => to_json_binary(&fetch_admin(deps)?),
-        QueryMsg::FetchFeePayerForTunnel { tunnel_id } => to_json_binary(&fetch_fee_payer_for_tunnel_id(deps, tunnel_id)?),
+        QueryMsg::FetchFeePayer { band_fee_payer } => to_json_binary(&fetch_fee_payer_for_tunnel_id(deps, band_fee_payer)?),
         QueryMsg::FetchAvailableFunds { fee_payer } => to_json_binary(&fetch_available_funds(deps, fee_payer)?),
     }
 }

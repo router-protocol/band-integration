@@ -22,8 +22,7 @@ pub enum ExecuteMsg {
     ReceiveBandData {
         dest_chain_id: String,
         dest_contract_address: String,
-        gas_limit: u64,
-        gas_price: u64,
+        max_gas_limit: u64,
         payload: Binary,
     },
     UpdateAdmin {
@@ -31,7 +30,7 @@ pub enum ExecuteMsg {
     },
     ClaimAdmin { },
     RegisterFeePayerOrFund {
-        tunnel_id: Option<u64>,
+        band_fee_payer: Option<String>,
     },
 }
 
@@ -44,8 +43,8 @@ pub enum QueryMsg {
     // fetch contract version
     GetContractVersion {},
     FetchAdmin {},
-    FetchFeePayerForTunnel {
-        tunnel_id: u64,
+    FetchFeePayer {
+        band_fee_payer: String,
     },
     FetchAvailableFunds {
         fee_payer: String,

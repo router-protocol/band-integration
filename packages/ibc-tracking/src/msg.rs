@@ -1,7 +1,5 @@
 use cosmwasm_schema::cw_serde;
 use osmosis_std_derive::CosmwasmExt;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 
 #[cw_serde]
 pub enum IBCLifecycleComplete {

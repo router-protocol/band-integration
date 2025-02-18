@@ -2,7 +2,7 @@ use cosmwasm_std::{Deps, StdResult, Uint128};
 use router_wasm_bindings::RouterQuery;
 
 use crate::state::{
-    ADMIN, FEE_PAYER, FEE_TANK,
+    ADMIN, ROUTER_FEE_PAYER, FEE_TANK,
 };
 
 pub fn fetch_admin(deps: Deps<RouterQuery>) -> StdResult<String> {
@@ -11,9 +11,9 @@ pub fn fetch_admin(deps: Deps<RouterQuery>) -> StdResult<String> {
 
 pub fn fetch_fee_payer_for_tunnel_id(
     deps: Deps<RouterQuery>,
-    tunnel_id: u64,
+    band_fee_payer: String,
 ) -> StdResult<String> {
-    FEE_PAYER.load(deps.storage, tunnel_id)
+    ROUTER_FEE_PAYER.load(deps.storage, &band_fee_payer)
 }
 
 pub fn fetch_available_funds(

@@ -65,7 +65,7 @@ pub fn execute(
         ExecuteMsg::ReceiveBandData {
             dest_chain_id,
             dest_contract_address,
-            max_gas_limit,
+            gas_limit,
             payload,
         } => receive_band_data(
             deps,
@@ -73,7 +73,7 @@ pub fn execute(
             &info,
             dest_chain_id,
             dest_contract_address,
-            max_gas_limit,
+            gas_limit,
             payload,
         ),
         ExecuteMsg::UpdateAdmin { new_admin } => update_admin(deps, &info, new_admin),

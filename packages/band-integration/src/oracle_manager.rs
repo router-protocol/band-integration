@@ -22,7 +22,7 @@ pub enum ExecuteMsg {
     ReceiveBandData {
         dest_chain_id: String,
         dest_contract_address: String,
-        max_gas_limit: u64,
+        gas_limit: u64,
         payload: Binary,
     },
     UpdateAdmin {

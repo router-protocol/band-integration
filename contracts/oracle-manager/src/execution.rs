@@ -56,7 +56,7 @@ pub fn receive_band_data(
     info: &MessageInfo,
     dest_chain_id: String,
     dest_contract_address: String,
-    max_gas_limit: u64,
+    gas_limit: u64,
     payload: Binary,
 ) -> StdResult<Response<RouterMsg>> {
     // // Define the ABI structure for the tuple
@@ -98,7 +98,7 @@ pub fn receive_band_data(
     deps.api.debug(&info_str);
 
     let request_metadata: RequestMetaData = RequestMetaData {
-        dest_gas_limit: max_gas_limit,
+        dest_gas_limit: gas_limit,
         dest_gas_price: oracle_gas_price_response.gas_price,
         ack_gas_limit: ACK_GAS_LIMIT,
         ack_gas_price: ACK_GAS_PRICE,
